@@ -2,7 +2,8 @@
 #include <math.h>
 #include <stdlib.h>
 
-#define FILE_NAME "input.txt"
+#define INPUT_FILE_NAME "input.txt"
+#define OUTPUT_FILE_NAME "output.txt"
 #define INITIAL_DISTANCE -1
 
 typedef enum Boolean { FALSE, TRUE } Boolean;
@@ -46,6 +47,18 @@ struct Input {
 	double dT;
 	Point* points;
 	Velocity* velocities;
+};
+
+struct Output {
+	// Number of clusters
+	int K;
+	// Defines the time the algo has stopped at
+	double t;
+	// The quality of the clusters
+	double q;
+
+	// The clusters of the solution
+	Cluster* clusters;
 };
 
 // Reads the input file (holding all points and parameters for k-means)
@@ -107,6 +120,32 @@ Input* readInputFile(const char *fileName){
 	return input;
 }
 
+void writeOutputFile(Output *output, const char* fileName){
+	int index;
+	FILE *file;
+
+	fopen_s(&file, fileName, "w+");
+	if (file != NULL) {
+		// First line in the file has details of the found clusters
+		fprintf_s(file, "First occurrence at t = %lf with q = %lf\n",
+			(output->t),
+			(output->q));
+
+		fprintf_s(file, "Centers of the clusters:\n");
+
+		for (index = 0; index < output->K; index++)
+			fprintf_s(file, "%lf %lf\n", 
+				output->clusters[index].center.x, 
+				output->clusters[index].center.y);
+
+		fclose(file);
+	}
+	// Could not open file
+	else {
+		// TODO: 
+	}
+}
+
 void print(Input* input) {
 	printf("N = %d K = %d T =  %d \ndT = %lf LIMIT = %d QM = %lf\n",
 		(input->N),
@@ -151,19 +190,11 @@ void increaseTime(Point* points, Velocity* velocities, int numOfPoints, double d
 	}
 }
 
-void freeRecourses(Input *fileInput, Cluster** clusters, int numOfClusters) {
-	int i;
-	
+void freeRecourses(Input *fileInput, Cluster* clusters, int numOfClusters) {
 	// TODO: Check if all alocations were freed
 
-	for (i = 0; i < fileInput->N; i++) {
-		free(fileInput->points);
-		free(fileInput->velocities);
-	}
-
-	for (i = 0; i < numOfClusters; i++) {
-		free(clusters[i]);
-	}
+	free(fileInput->points);
+	free(fileInput->velocities);
 
 	free(fileInput);
 	free(clusters);
@@ -327,11 +358,7 @@ double kmeans(Input *fileInput, Cluster* clusters) {
 		calculateClustersCenters(fileInput, clusters);
 
 		print(clusters, fileInput->K);
-
-		printf("\n\n***** iteration ***** \n\n");
 	}
-
-	printf("\nIteration: %d\n\n", iteration);
 
 	return getClustersQuality(fileInput, clusters);
 }
@@ -339,36 +366,44 @@ double kmeans(Input *fileInput, Cluster* clusters) {
 void main() {
 	Input *fileInput;
 	Cluster* clusters;
+	Output output;
 	double q;
+	// TODO: MPI (pid) * (num_of_processes)
+	int timeInterval = 0;
+	int numOfProcesses = 1;
+	int time;
+	Boolean isFinished = FALSE;
 
-	// Reading from file and testing increase time
-	fileInput = readInputFile(FILE_NAME);
-	print(fileInput);
-	//increaseTime(fileInput->points, fileInput->velocities, fileInput->N, fileInput->dT, 1);
-	//printf("\nAfter some time:\n\n");
+	// Reading from file
+	fileInput = readInputFile(INPUT_FILE_NAME);
 	print(fileInput);
 
 
 	clusters = initClusters(fileInput);
 
-	q = kmeans(fileInput, clusters);
+	for (time = timeInterval; time < fileInput->T && !isFinished; time += numOfProcesses) {
+		q = kmeans(fileInput, clusters);
 
-	printf("\nq=%lf:\n\n", q);
+		// Checking termination condition:
+		if (q < fileInput->QM)
+			isFinished = TRUE;
+			// TODO: Send result to master process
+		else
+			// Have not reached the desired quality
+			increaseTime(fileInput->points, fileInput->velocities, fileInput->N, fileInput->dT, timeInterval);
+			// TODO: Send null as result fot master process
+	}
 
-	print(clusters, fileInput->K);
+	output.q = q;
+	output.clusters = clusters;
+	output.K = fileInput->K;
+	output.t = fileInput->dT;
 
-	increaseTime(fileInput->points, fileInput->velocities, fileInput->N, fileInput->dT, 1);
-	printf("\nAfter some time:\n\n");
-	print(fileInput);
-
-	q = kmeans(fileInput, clusters);
-
-	printf("\nq=%lf:\n\n", q);
-
-	print(clusters, fileInput->K);
+	// Writing the result
+	writeOutputFile(&output, OUTPUT_FILE_NAME);
 
 	// TODO: Call free
-	//freeRecourses(fileInput, &clusters, );
+	freeRecourses(fileInput, clusters, fileInput->K);
 
 	getchar();
 }

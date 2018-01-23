@@ -214,6 +214,14 @@ Cluster* initClusters(Input *fileInput) {
 			clusters[i].id = i;
 			clusters[i].numOfPoints = 0;
 		}
+
+		// Clusters has changed, clearing the clusters of the points:
+		for (i = 0; i < fileInput->N; i++)
+			fileInput->points[i].cluster = NULL;
+	}
+	else
+	{
+		// TODO: Alloc failed
 	}
 
 	return clusters;
@@ -365,7 +373,7 @@ double kmeans(Input *fileInput, Cluster* clusters) {
 
 void main() {
 	Input *fileInput;
-	Cluster* clusters;
+	Cluster* clusters = NULL;
 	Output output;
 	double q;
 	// TODO: MPI (pid) * (num_of_processes)
@@ -376,12 +384,13 @@ void main() {
 
 	// Reading from file
 	fileInput = readInputFile(INPUT_FILE_NAME);
-	print(fileInput);
-
-
-	clusters = initClusters(fileInput);
+	
 
 	for (time = timeInterval; time < fileInput->T && !isFinished; time += numOfProcesses) {
+		print(fileInput);
+		free(clusters);
+		clusters = initClusters(fileInput);
+
 		q = kmeans(fileInput, clusters);
 
 		// Checking termination condition:
@@ -390,7 +399,7 @@ void main() {
 			// TODO: Send result to master process
 		else
 			// Have not reached the desired quality
-			increaseTime(fileInput->points, fileInput->velocities, fileInput->N, fileInput->dT, timeInterval);
+			increaseTime(fileInput->points, fileInput->velocities, fileInput->N, fileInput->dT, numOfProcesses);
 			// TODO: Send null as result fot master process
 	}
 

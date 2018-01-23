@@ -1,183 +1,10 @@
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
+#include "IOFilesHandler.h"
 
-#define INPUT_FILE_NAME "input.txt"
-#define OUTPUT_FILE_NAME "output.txt"
 #define INITIAL_DISTANCE -1
-
-typedef enum Boolean { FALSE, TRUE } Boolean;
-
-struct Position {
-	double x;
-	double y;
-};
-
-struct Cluster {
-	int numOfPoints;
-	Position center;
-	double diameter;
-	int id;
-};
-
-struct Velocity {
-	double vx;
-	double vy;
-};
-
-struct Point {
-	Position position;
-	Cluster* cluster;
-	Velocity velocity;
-};
-
-struct Input {
-	// Number of points
-	int N;
-	// Number of clusters to find
-	int K;
-	//  The maximum number of iterations for K - MEAN algorithm
-	int LIMIT;
-	// Quality measure to stop
-	double QM;
-	//  Defines the end of time interval[0, T]
-	int T;
-	// Defines moments t = n*dT, n = { 0, 1, 2, … , T / dT } 
-	// for which calculate the clusters and the quality
-	double dT;
-	Point* points;
-	Velocity* velocities;
-};
-
-struct Output {
-	// Number of clusters
-	int K;
-	// Defines the time the algo has stopped at
-	double t;
-	// The quality of the clusters
-	double q;
-
-	// The clusters of the solution
-	Cluster* clusters;
-};
-
-// Reads the input file (holding all points and parameters for k-means)
-Input* readInputFile(const char *fileName){
-	int index;
-	double coordX, coordY, vx, vy;
-	FILE *file;
-	Input* input = NULL;
-	// Indicating if points array allocation was successful
-	Boolean allocSuccessful = FALSE;
-
-	fopen_s(&file, fileName, "r");
-	if (file != NULL){
-		input = (Input*)malloc(sizeof(Input));
-
-		if (input != NULL) {
-			// First line in the file has many input parameters
-			fscanf_s(file, "%d %d %d %lf %d %lf", 
-				&(input->N), 
-				&(input->K), 
-				&(input->T), 
-				&(input->dT), 
-				&(input->LIMIT), 
-				&(input->QM));
-
-			input->velocities = (Velocity*)calloc(input->N, sizeof(Velocity));
-			input->points = (Point*)calloc(input->N, sizeof(Point));
-
-			if (input->velocities != NULL &&
-				input->points != NULL) {
-				allocSuccessful = TRUE;
-				for (index = 0; index < input->N; index++) {
-					// Reading each point & velocity and placing it in the array:
-
-					fscanf_s(file, "%lf %lf %lf %lf", &coordX, &coordY, &vx, &vy);
-					input->points[index].position.x = coordX;
-					input->points[index].position.y = coordY;
-
-					input->velocities[index].vx = vx;
-					input->velocities[index].vy = vy;
-				}
-			}
-			fclose(file);
-
-			if (!allocSuccessful){
-				// TODO: 
-			}
-		}
-		// There is no one process per Point in file
-		else{
-			// TODO: 
-		}
-	}
-	// Could not read points file
-	else{
-		// TODO: 
-	}
-
-	return input;
-}
-
-void writeOutputFile(Output *output, const char* fileName){
-	int index;
-	FILE *file;
-
-	fopen_s(&file, fileName, "w+");
-	if (file != NULL) {
-		// First line in the file has details of the found clusters
-		fprintf_s(file, "First occurrence at t = %lf with q = %lf\n",
-			(output->t),
-			(output->q));
-
-		fprintf_s(file, "Centers of the clusters:\n");
-
-		for (index = 0; index < output->K; index++)
-			fprintf_s(file, "%lf %lf\n", 
-				output->clusters[index].center.x, 
-				output->clusters[index].center.y);
-
-		fclose(file);
-	}
-	// Could not open file
-	else {
-		// TODO: 
-	}
-}
-
-void print(Input* input) {
-	printf("N = %d K = %d T =  %d \ndT = %lf LIMIT = %d QM = %lf\n",
-		(input->N),
-		(input->K),
-		(input->T),
-		(input->dT),
-		(input->LIMIT),
-		(input->QM));
-	
-	printf("Points:\n");
-
-	for (int i = 0; i < input->N; i++) {
-		printf("%lf %lf\t%lf %lf\n", 
-			input->points[i].position.x, 
-			input->points[i].position.y, 
-			input->velocities[i].vx, 
-			input->velocities[i].vy);
-	}
-}
-
-void print(Cluster* clusters, int clusterCount) {
-
-	printf("Clusters:\n");
-
-	for (int i = 0; i < clusterCount; i++) {
-		printf("Id: %d\t(%lf, %lf) num of points = %d\n",
-			clusters[i].id,
-			clusters[i].center.x,
-			clusters[i].center.y,
-			clusters[i].numOfPoints);
-	}
-}
+#define INVALID_TIME -1
 
 // Increases each point in the given collection by time with the given velocities
 // (for each point x = x + (dt * moment) * vxi ,
@@ -241,7 +68,6 @@ Boolean assignClusterToPoint(Point* point, Cluster* clusters, int clustersCount)
 	double minDistance = INITIAL_DISTANCE, currDistance;
 	Cluster* newCluster = NULL;
 	
-	
 	for (clusterIndex = 0; clusterIndex < clustersCount; clusterIndex++) {
 		currDistance = getPointsDistance(&(point->position), &(clusters[clusterIndex].center));
 
@@ -275,19 +101,22 @@ void calculateClustersCenters(Input *fileInput, Cluster* clusters) {
 	double sumX, sumY;
 
 	for (clusterIndex = 0; clusterIndex < fileInput->K; clusterIndex++) {
-		sumX = sumY = 0;
+		// When a cluster has no points, we keep it's center intact
+		if (clusters[clusterIndex].numOfPoints != 0 ) {
+			sumX = sumY = 0;
 
-		for (pointIndex = 0; pointIndex < fileInput->N; pointIndex++) {
-			// Calculating sum of all point in the cluster
-			if (fileInput->points[pointIndex].cluster->id == clusterIndex) {
-				sumX += fileInput->points[pointIndex].position.x;
-				sumY += fileInput->points[pointIndex].position.y;
+			for (pointIndex = 0; pointIndex < fileInput->N; pointIndex++) {
+				// Calculating sum of all point in the cluster
+				if (fileInput->points[pointIndex].cluster->id == clusterIndex) {
+					sumX += fileInput->points[pointIndex].position.x;
+					sumY += fileInput->points[pointIndex].position.y;
+				}
 			}
+		
+			// Each cluster's center is the average of points positions
+			clusters[clusterIndex].center.x = sumX / clusters[clusterIndex].numOfPoints;
+			clusters[clusterIndex].center.y = sumY / clusters[clusterIndex].numOfPoints;
 		}
-
-		// Each cluster's center is the average of points positions
-		clusters[clusterIndex].center.x = sumX / clusters[clusterIndex].numOfPoints;
-		clusters[clusterIndex].center.y = sumY / clusters[clusterIndex].numOfPoints;
 	}
 }
 
@@ -308,17 +137,19 @@ Boolean assignClustersToPoints(Input *fileInput, Cluster* clusters) {
 
 void calculateClustersDiameter(Input *fileInput, Cluster* clusters) {
 	int clusterIndex, i, j;
-	double maxDistance = 0, currDistance;
+	double maxDistance, currDistance;
 
 	for (clusterIndex = 0; clusterIndex < fileInput->K; clusterIndex++) {
-		
+		maxDistance = 0;
+
 		// Going over all points and calculating distance with each other point in the cluster
 		// to get the maximum distance
 		for (i = 0; i < fileInput->N; i++)
 			for (j = 0; j < fileInput->N; j++)
 				// Calculating distance for points in the same cluster
 				if (fileInput->points[i].cluster->id == clusterIndex &&
-					fileInput->points[j].cluster->id == clusterIndex) {
+					fileInput->points[j].cluster->id == clusterIndex &&
+					j != i) {
 					currDistance = getPointsDistance(&(fileInput->points[i].position), &(fileInput->points[j].position));
 					if (currDistance > maxDistance)
 						maxDistance = currDistance;
@@ -335,13 +166,10 @@ double getClustersQuality(Input *fileInput, Cluster* clusters) {
 
 	calculateClustersDiameter(fileInput, clusters);
 
-	for (i = 0; i < fileInput->K; i++) {
-		for (j = 0; j < fileInput->K; j++) {
-			if (j != i) {
+	for (i = 0; i < fileInput->K; i++) 
+		for (j = 0; j < fileInput->K; j++) 
+			if (j != i) 
 				q += clusters[i].diameter / getPointsDistance(&(clusters[i].center), &(clusters[j].center));
-			}
-		}
-	}
 
 	// Devide q by the number of addends
 	q /= (fileInput->K-1) * (fileInput->K);
@@ -364,8 +192,6 @@ double kmeans(Input *fileInput, Cluster* clusters) {
 		
 		// Updating the new centers
 		calculateClustersCenters(fileInput, clusters);
-
-		print(clusters, fileInput->K);
 	}
 
 	return getClustersQuality(fileInput, clusters);
@@ -376,18 +202,18 @@ void main() {
 	Cluster* clusters = NULL;
 	Output output;
 	double q;
-	// TODO: MPI (pid) * (num_of_processes)
+	// TODO: MPI (pid)
 	int timeInterval = 0;
 	int numOfProcesses = 1;
-	int time;
+	double n;
+	double currTime = INVALID_TIME;
 	Boolean isFinished = FALSE;
 
 	// Reading from file
 	fileInput = readInputFile(INPUT_FILE_NAME);
-	
 
-	for (time = timeInterval; time < fileInput->T && !isFinished; time += numOfProcesses) {
-		print(fileInput);
+	for (n = timeInterval; n < (fileInput->T / fileInput->dT) && !isFinished; n += numOfProcesses) {
+		//print(fileInput);
 		free(clusters);
 		clusters = initClusters(fileInput);
 
@@ -400,19 +226,25 @@ void main() {
 		else
 			// Have not reached the desired quality
 			increaseTime(fileInput->points, fileInput->velocities, fileInput->N, fileInput->dT, numOfProcesses);
-			// TODO: Send null as result fot master process
+			// TODO: Send null as result for master process
+		
+		currTime = n * numOfProcesses * fileInput->dT;
 	}
 
 	output.q = q;
 	output.clusters = clusters;
 	output.K = fileInput->K;
-	output.t = fileInput->dT;
+	output.t = currTime;
 
 	// Writing the result
 	writeOutputFile(&output, OUTPUT_FILE_NAME);
 
+	print(clusters, fileInput->K);
+
 	// TODO: Call free
 	freeRecourses(fileInput, clusters, fileInput->K);
+
+	printf("\nFinished!");
 
 	getchar();
 }

@@ -28,18 +28,19 @@ void freeRecourses(Input *fileInput, Cluster* clusters, int numOfClusters) {
 }
 
 // Assigning K clusters that their centers are the first K point
-Cluster* initClusters(Input *fileInput) {
+void initClusters(Input *fileInput, Cluster** clusters) {
 	int i;
 
-	// Assigning an array of K clusters
-	Cluster* clusters = (Cluster*)malloc(sizeof(Cluster) * fileInput->K);
+	if(*clusters == NULL)
+		// Assigning an array of K clusters
+		*clusters = (Cluster*)malloc(sizeof(Cluster) * fileInput->K);
 	
-	if (clusters != NULL) {
+	if (*clusters != NULL) {
 		for (i = 0; i < fileInput->K; i++) {
-			clusters[i].center.x = fileInput->points[i].position.x;
-			clusters[i].center.y = fileInput->points[i].position.y;
-			clusters[i].id = i;
-			clusters[i].numOfPoints = 0;
+			(*clusters)[i].center.x = fileInput->points[i].position.x;
+			(*clusters)[i].center.y = fileInput->points[i].position.y;
+			(*clusters)[i].id = i;
+			(*clusters)[i].numOfPoints = 0;
 		}
 
 		// Clusters has changed, clearing the clusters of the points:
@@ -50,14 +51,14 @@ Cluster* initClusters(Input *fileInput) {
 	{
 		// TODO: Alloc failed
 	}
-
-	return clusters;
 }
 
 // Calculates distance between two points
 double getPointsDistance(Position* p1, Position* p2)
 {
-	return sqrt(pow(p2->x - p1->x, 2) + pow(p2->y - p1->y, 2));
+	double x = p2->x - p1->x;
+	double y = p2->y - p1->y;
+	return sqrt(x*x + y*y);
 }
 
 // Calculating the distance between each cluster and the given point,
@@ -144,16 +145,15 @@ void calculateClustersDiameter(Input *fileInput, Cluster* clusters) {
 
 		// Going over all points and calculating distance with each other point in the cluster
 		// to get the maximum distance
-		for (i = 0; i < fileInput->N; i++)
-			for (j = 0; j < fileInput->N; j++)
-				// Calculating distance for points in the same cluster
-				if (fileInput->points[i].cluster->id == clusterIndex &&
-					fileInput->points[j].cluster->id == clusterIndex &&
-					j != i) {
-					currDistance = getPointsDistance(&(fileInput->points[i].position), &(fileInput->points[j].position));
-					if (currDistance > maxDistance)
-						maxDistance = currDistance;
-				}
+		for (i = 0; i < fileInput->N - 1; i++)
+			if (fileInput->points[i].cluster->id == clusterIndex)
+				for (j = i+1; j < fileInput->N; j++)
+					// Calculating distance for points in the same cluster
+					if(fileInput->points[j].cluster->id == clusterIndex) {
+						currDistance = getPointsDistance(&(fileInput->points[i].position), &(fileInput->points[j].position));
+						if (currDistance > maxDistance)
+							maxDistance = currDistance;
+					}
 
 		clusters[clusterIndex].diameter = maxDistance;
 	}
@@ -213,9 +213,7 @@ void main() {
 	fileInput = readInputFile(INPUT_FILE_NAME);
 
 	for (n = timeInterval; n < (fileInput->T / fileInput->dT) && !isFinished; n += numOfProcesses) {
-		//print(fileInput);
-		free(clusters);
-		clusters = initClusters(fileInput);
+		initClusters(fileInput, &clusters);
 
 		q = kmeans(fileInput, clusters);
 

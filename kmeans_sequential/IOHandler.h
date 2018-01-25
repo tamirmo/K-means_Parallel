@@ -1,7 +1,10 @@
 #pragma once
 
+#include <mpi.h>
+
 #define INPUT_FILE_NAME "input.txt"
 #define OUTPUT_FILE_NAME "output.txt"
+#define INVALID_OUTPUT_K 0
 
 // TODO: Think of a better place for boolean
 typedef enum Boolean { FALSE, TRUE } Boolean;
@@ -29,7 +32,7 @@ struct Point {
 	Velocity velocity;
 };
 
-struct Input {
+struct InputParams {
 	// Number of points
 	int N;
 	// Number of clusters to find
@@ -43,8 +46,6 @@ struct Input {
 	// Defines moments t = n*dT, n = { 0, 1, 2, … , T / dT } 
 	// for which calculate the clusters and the quality
 	double dT;
-	Point* points;
-	Velocity* velocities;
 };
 
 struct Output {
@@ -59,9 +60,30 @@ struct Output {
 	Cluster* clusters;
 };
 
-// Reads the input file (holding all points and parameters for k-means)
-Input* readInputFile(const char *fileName);
-void writeOutputFile(Output *output, const char* fileName);
+struct MPITypes {
+	MPI_Datatype MPI_Velocity;
+	MPI_Datatype MPI_Input_Param;
+	MPI_Datatype MPI_Cluster;
+	MPI_Datatype MPI_Position;
+	MPI_Datatype MPI_Output;
+	MPI_Datatype MPI_Point;
+};
 
+// Reads the input file (holding all points and parameters for k-means)
+void readInputFile(const char *fileName, InputParams **inputParams, Point **points);
+void writeOutputFile(Output *output, const char* fileName);
+// Indicating if the given output struct has valid result in it
+Boolean isOutputValid(Output *output);
+
+void print(InputParams* inputParams, Point* points);
 void print(Cluster* clusters, int clusterCount);
-void print(Input* input);
+
+// Creates MPI_Types:
+
+void createPositionType(MPI_Datatype *MPI_Position);
+void createClusterType(MPI_Datatype *MPI_Cluster, MPI_Datatype *MPI_Position);
+void createInputParamsType(MPI_Datatype *MPI_Input_Param);
+void createVelocityType(MPI_Datatype *MPI_Velocity);
+void createPointType(MPI_Datatype *MPI_Point, MPI_Datatype *MPI_Velocity, MPI_Datatype *MPI_Position);
+void createMpiTypes(MPITypes *MPITypes);
+void createOutputType(MPI_Datatype *MPI_Output, MPI_Datatype *MPI_Cluster, int numOfClusters);

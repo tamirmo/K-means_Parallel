@@ -55,9 +55,6 @@ struct Output {
 	double t;
 	// The quality of the clusters
 	double q;
-
-	// The clusters of the solution
-	Cluster* clusters;
 };
 
 struct MPITypes {
@@ -71,7 +68,7 @@ struct MPITypes {
 
 // Reads the input file (holding all points and parameters for k-means)
 void readInputFile(const char *fileName, InputParams **inputParams, Point **points);
-void writeOutputFile(Output *output, const char* fileName);
+void writeOutputFile(Output *output, Cluster* clusters, const char* fileName);
 // Indicating if the given output struct has valid result in it
 Boolean isOutputValid(Output *output);
 
@@ -86,4 +83,4 @@ void createInputParamsType(MPI_Datatype *MPI_Input_Param);
 void createVelocityType(MPI_Datatype *MPI_Velocity);
 void createPointType(MPI_Datatype *MPI_Point, MPI_Datatype *MPI_Velocity, MPI_Datatype *MPI_Position);
 void createMpiTypes(MPITypes *MPITypes);
-void createOutputType(MPI_Datatype *MPI_Output, MPI_Datatype *MPI_Cluster, int numOfClusters);
+void createOutputType(MPI_Datatype *MPI_Output);

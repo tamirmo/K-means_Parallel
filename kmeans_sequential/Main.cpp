@@ -27,32 +27,9 @@ void freeRecourses(InputParams* inputParams,
 	// TODO: Check if all alocations were freed
 
 	free(points);
-	if (isMasterRank(myId))
-	{
-		printf("\nfree1");
-		fflush(stdout);
-	}
 	free(inputParams);
-	if (isMasterRank(myId))
-	{
-		printf("\nfree2");
-		fflush(stdout);
-	}
 	free(clusters);
-	if (isMasterRank(myId))
-	{
-		printf("\nfree3");
-		printf("\nk = %d", outputs[0].K);
-		printf("\nq = %lf", outputs[0].q);
-		printf("\nt = %lf", outputs[0].t);
-		fflush(stdout);
-	}
 	free(outputs);
-	if (isMasterRank(myId))
-	{
-		printf("\nfree4");
-		fflush(stdout);
-	}
 }
 
 // Assigning K clusters that their centers are the first K point
@@ -230,8 +207,6 @@ double kmeans(InputParams* inputParams, Point* points, Cluster** clusters) {
 void broadcastInput(MPITypes *types, InputParams* inputParams, Point** points, int myId) {
 	// TODO: Broadcast all slaves the array
 	MPI_Bcast(inputParams, 1, types->MPI_Input_Param, MASTER_RANK, MPI_COMM_WORLD);
-	printf("\nCheckpoint 1.2 ");
-	fflush(stdout);
 	
 	// Master has the points already, slaves need to allocate memory
 	if (!isMasterRank(myId)) {
@@ -245,17 +220,85 @@ void broadcastInput(MPITypes *types, InputParams* inputParams, Point** points, i
 	}
 
 	MPI_Bcast((*points), inputParams->N, types->MPI_Point, MASTER_RANK, MPI_COMM_WORLD);
-	printf("\nCheckpoint 1.3 ");
-	fflush(stdout);
+}
+
+// Getting the finished proccess index and sending the clusters if needed
+void handleFinishedProcessIndex(int myId, int finishedProccess, Boolean *isFinished, Cluster** clusters, int clustersCount, MPITypes *types) {
+	MPI_Status status;
+
+	// If the result comes from one of slaves,
+	// master needs to receive it
+	if (!isMasterRank(myId)) {
+		printf("\nSlave got id %d", finishedProccess);
+		fflush(stdout);
+	}
+
+	// If we have the required result
+	if (finishedProccess != NO_SLAVE_FINISHED) {
+		// If the result comes from one of slaves,
+		// master needs to receive it
+		if (isMasterRank(myId)) {
+			if (!isMasterRank(finishedProccess)) {
+				printf("\nMaster receiving from %d", finishedProccess);
+				fflush(stdout);
+				MPI_Recv(*clusters, clustersCount, types->MPI_Cluster, finishedProccess, 0, MPI_COMM_WORLD, &status);
+			}
+			else {
+				printf("\nMaster result taken from %d", finishedProccess);
+				fflush(stdout);
+			}
+		}
+		// Slaves code:
+		else {
+			// If master wants our result
+			if (finishedProccess == myId) {
+				printf("\nSlave sending result %d", finishedProccess);
+				fflush(stdout);
+				MPI_Send(*clusters, clustersCount, types->MPI_Cluster, MASTER_RANK, 0, MPI_COMM_WORLD);
+			}
+		}
+		*isFinished = TRUE;
+	}
+}
+
+// Handling proccesses left wihtout a time to check at the end
+// (we need them to call barrier for the last time before exiting)
+void handleLeftProccesses(int myId, 
+	int numOfProcesses, 
+	Boolean isFinished, 
+	InputParams* inputParams, 
+	Output *result, 
+	int finishedProccess, 
+	MPITypes *types) {
+	// Calculating the number is processes left t the last round
+	// checking a time
+	int lastProcessesLeft = (int)(inputParams->T / inputParams->dT) % numOfProcesses;
+
+	// When the prcesses finished it's times
+	if (!isFinished && myId >= lastProcessesLeft) {
+
+		// Waiting for all others to finish:
+		printf("\nCheckpoint 8.1: id = %d", myId);
+		fflush(stdout);
+		MPI_Barrier(MPI_COMM_WORLD);
+		MPI_Gather(
+			result,
+			1, types->MPI_Output,
+			NULL,
+			1, types->MPI_Output,
+			MASTER_RANK,
+			MPI_COMM_WORLD);
+		MPI_Bcast(&finishedProccess, 1, MPI_INT, MASTER_RANK, MPI_COMM_WORLD);
+	}
 }
 
 // TODO: Think of a name for this function
 void parallel_kmeans(int myId, int numOfProcesses) {
 	InputParams* inputParams = (InputParams*)malloc(sizeof(InputParams));
 	Point* points = NULL;
-	Cluster* myClusters = NULL;
-	Output result, *slaveOutputs = NULL;
-	int n;
+	Cluster* clusters = NULL;
+	Output result = {0,0,0}, *slaveOutputs = NULL;
+	int n, finishedProccess;
 	Boolean isFinished = FALSE;
 	double q, currTime = INVALID_TIME;
 	MPITypes types;
@@ -270,7 +313,7 @@ void parallel_kmeans(int myId, int numOfProcesses) {
 	}
 
 	if (isMasterRank(myId)) {
-		slaveOutputs = (Output*)malloc(sizeof(Output) * numOfProcesses);
+		slaveOutputs = (Output*)calloc(numOfProcesses, sizeof(Output));
 		if (slaveOutputs == NULL) {
 			// TODO: Alloc failed
 		}
@@ -283,25 +326,23 @@ void parallel_kmeans(int myId, int numOfProcesses) {
 			fflush(stdout);
 		}
 	}
-	printf("\nCheckpoint 1.0 : id = %d", myId);
+
 	createMpiTypes(&types);
 	printf("\nCheckpoint 1.1 : id = %d", myId);
 	fflush(stdout);
 	broadcastInput(&types, inputParams, &points, myId);
-	createOutputType(&(types.MPI_Output), &(types.MPI_Cluster), inputParams->K);
 
 	printf("\nCheckpoint 2: id = %d", myId);
 	fflush(stdout);
 
-	if (!isMasterRank(myId)) {
-		print(inputParams, points);
-	}
+	// Each process starts from t = rank
+	increaseTime(points, inputParams->N, inputParams->dT, myId);
 
 	for (n = myId; n < (inputParams->T / inputParams->dT) && !isFinished; n += numOfProcesses) {
-		q = kmeans(inputParams, points, &myClusters);
-		currTime = n * numOfProcesses * inputParams->dT;
+		q = kmeans(inputParams, points, &clusters);
+		currTime = n * inputParams->dT;
 
-		printf("\nCheckpoint 3: id = %d", myId);
+		printf("\nCheckpoint 3: id = %d n = %d", myId, n);
 		fflush(stdout);
 
 		// Checking termination condition:
@@ -315,14 +356,13 @@ void parallel_kmeans(int myId, int numOfProcesses) {
 			result.t = currTime;
 			result.K = inputParams->K;
 			result.q = q;
-			result.clusters = myClusters;
 		}
 
 		// Waiting till all hosts finish. No point in moving to next time, 
 		// other proc migth finished
 		MPI_Barrier(MPI_COMM_WORLD);
 		
-		printf("\nCheckpoint 4: id = %d", myId);
+		printf("\nCheckpoint 4: time = %lf id = %d", MPI_Wtime(), myId);
 		fflush(stdout);
 
 		MPI_Gather(
@@ -336,17 +376,28 @@ void parallel_kmeans(int myId, int numOfProcesses) {
 		printf("\nCheckpoint 5: id = %d", myId);
 		fflush(stdout);
 
+		if (isMasterRank(myId)) {
+			slaveOutputs[1].q = 3;
+			printf("\nk = %d", slaveOutputs[1].K);
+			printf("\nq = %lf", slaveOutputs[1].q);
+			printf("\nt = %lf", slaveOutputs[1].t);
+		}
+
 		if (isMasterRank(myId))
-			/*masterCheckResults(inputParams,
+			finishedProccess = masterCheckResults(inputParams,
 				&result, &isFinished,
 				numOfProcesses,
-				slaveOutputs);*/
+				slaveOutputs);
 
 		printf("\nCheckpoint 6: id = %d", myId);
 		fflush(stdout);
 
-		MPI_Bcast(&isFinished, 1, MPI_INT, MASTER_RANK, MPI_COMM_WORLD);
-			
+		// Master sends all the index of the finished process
+		MPI_Bcast(&finishedProccess, 1, MPI_INT, MASTER_RANK, MPI_COMM_WORLD);
+
+		// Checking if we are finished and if we need to send the clusters
+		handleFinishedProcessIndex(myId, finishedProccess, &isFinished, &clusters, inputParams->K, &types);
+		
 		printf("\nCheckpoint 7: id = %d isFinished = %d", myId, isFinished);
 		fflush(stdout);
 
@@ -358,8 +409,17 @@ void parallel_kmeans(int myId, int numOfProcesses) {
 		fflush(stdout);
 	}
 
+	// There migth be some proccesses left wihtout a time to check at the end,
+	// we need them to call barrier for the last time before exiting
+	handleLeftProccesses(myId, numOfProcesses, 
+		isFinished, 
+		inputParams, 
+		&result, 
+		finishedProccess, 
+		&types);
+
 	if (isMasterRank(myId))
-		masterPrintResults(inputParams, &result);
+		masterPrintResults(&result, clusters);
 	
 	printf("\nCheckpoint 9: id = %d", myId);
 	fflush(stdout);
@@ -367,7 +427,7 @@ void parallel_kmeans(int myId, int numOfProcesses) {
 	// TODO: Call free
 	freeRecourses(inputParams,
 		points,
-		myClusters,
+		clusters,
 		slaveOutputs,
 		myId);
 }
@@ -382,7 +442,7 @@ int main(int argc, char *argv[]) {
 	MPI_Comm_rank(MPI_COMM_WORLD, &myId);
 	MPI_Comm_size(MPI_COMM_WORLD, &numOfProcesses);
 
-	printf("\nid = %d Started!", myId);
+	printf("\nid = %d Started! numOfPr = %d", myId, numOfProcesses);
 	fflush(stdout);
 
 	parallel_kmeans(myId, numOfProcesses);

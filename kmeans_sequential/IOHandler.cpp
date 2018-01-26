@@ -61,7 +61,7 @@ void readInputFile(const char *fileName, InputParams **inputParams, Point **poin
 	}
 }
 
-void writeOutputFile(Output *output, const char* fileName) {
+void writeOutputFile(Output *output, Cluster* clusters, const char* fileName) {
 	int index;
 	FILE *file;
 
@@ -76,8 +76,8 @@ void writeOutputFile(Output *output, const char* fileName) {
 
 		for (index = 0; index < output->K; index++)
 			fprintf_s(file, "%lf %lf\n",
-				output->clusters[index].center.x,
-				output->clusters[index].center.y);
+				clusters[index].center.x,
+				clusters[index].center.y);
 
 		fclose(file);
 	}
@@ -169,17 +169,16 @@ void createPointType(MPI_Datatype *MPI_Point, MPI_Datatype *MPI_Velocity, MPI_Da
 	MPI_Type_commit(MPI_Point);
 }
 
-void createOutputType(MPI_Datatype *MPI_Output, MPI_Datatype *MPI_Cluster, int numOfClusters) {
+void createOutputType(MPI_Datatype *MPI_Output) {
 	Output output;
-	MPI_Datatype type[4] = { MPI_INT, MPI_DOUBLE, MPI_DOUBLE, *MPI_Cluster };
-	int blocklen[4] = { 1, 1, 1, numOfClusters };
+	MPI_Datatype type[3] = { MPI_INT, MPI_DOUBLE, MPI_DOUBLE };
+	int blocklen[3] = { 1, 1, 1};
 	MPI_Aint disp[4];
 
 	disp[0] = (char *)&(output.K) - (char *)&output;
 	disp[1] = (char *)&(output.t) - (char *)&output;
 	disp[2] = (char *)&(output.q) - (char *)&output;
-	disp[3] = (char *)&(output.clusters) - (char *)&output;
-	MPI_Type_create_struct(4, blocklen, disp, type, MPI_Output);
+	MPI_Type_create_struct(3, blocklen, disp, type, MPI_Output);
 	MPI_Type_commit(MPI_Output);
 }
 
@@ -189,6 +188,7 @@ void createMpiTypes(MPITypes *MPITypes) {
 	createVelocityType(&(MPITypes->MPI_Velocity));
 	createClusterType(&(MPITypes->MPI_Cluster), &(MPITypes->MPI_Position));
 	createPointType(&(MPITypes->MPI_Point), &(MPITypes->MPI_Velocity), &(MPITypes->MPI_Position));
+	createOutputType(&(MPITypes->MPI_Output));
 }
 
 void print(InputParams* inputParams, Point* points) {

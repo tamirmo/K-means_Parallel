@@ -24,26 +24,32 @@ int getFirstFinishedIndex(int numOfProcesses, Output* slaveClusters) {
 	return finishedSlaveIndex;
 }
 
-void masterPrintResults(InputParams* inputParams, Output *result) {
+void masterPrintResults(Output *result, Cluster* clusters) {
 	// TODO: Print to file "result"
 	// Writing the result
-	writeOutputFile(result, OUTPUT_FILE_NAME);
-	print(result->clusters, inputParams->K);
+	writeOutputFile(result, clusters, OUTPUT_FILE_NAME);
+	print(clusters, result->K);
 }
 
-void masterCheckResults(InputParams* inputParams,
+// Cheking the output array with results from slaves.
+// Returning the index of the first finished slave or NO_SLAVE_FINISHED
+int masterCheckResults(InputParams* inputParams,
 	Output *result,
 	Boolean *isFinished,
 	int numOfProcesses,
 	Output *slaveOutputs) {
+	// Assuming the master is finished
+	int finishedProcessIndex = MASTER_RANK;
 	// If master has finished, no need to process more,
 	// his result will be taken
-	if (!isFinished) {
+	/*if (!isFinished)*/ {
 		// Checking if there is a process with result
-		int finishedProcessIndex = getFirstFinishedIndex(numOfProcesses, slaveOutputs);
+		finishedProcessIndex = getFirstFinishedIndex(numOfProcesses, slaveOutputs);
 		if (finishedProcessIndex != NO_SLAVE_FINISHED) {
 			*isFinished = TRUE;
 			*result = slaveOutputs[finishedProcessIndex];
 		}
 	}
+
+	return finishedProcessIndex;
 }

@@ -40,6 +40,8 @@ int masterCheckResults(InputParams* inputParams,
 	Output *slaveOutputs) {
 	// Assuming the master is finished
 	int finishedProcessIndex = MASTER_RANK;
+	
+	// TODO: Return this from comment
 	// If master has finished, no need to process more,
 	// his result will be taken
 	/*if (!isFinished)*/ {

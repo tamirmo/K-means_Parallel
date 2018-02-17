@@ -1,6 +1,9 @@
 #pragma once
 
 #include <mpi.h>
+#include "Point.h"
+
+struct Cluster;
 
 #define INPUT_FILE_NAME "input.txt"
 #define OUTPUT_FILE_NAME "output.txt"
@@ -8,29 +11,6 @@
 
 // TODO: Think of a better place for boolean
 typedef enum Boolean { FALSE, TRUE } Boolean;
-
-struct Position {
-	double x;
-	double y;
-};
-
-struct Cluster {
-	int numOfPoints;
-	Position center;
-	double diameter;
-	int id;
-};
-
-struct Velocity {
-	double vx;
-	double vy;
-};
-
-struct Point {
-	Position position;
-	Cluster* cluster;
-	Velocity velocity;
-};
 
 struct InputParams {
 	// Number of points

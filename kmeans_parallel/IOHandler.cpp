@@ -2,6 +2,8 @@
 #include <stdlib.h>
 
 #include "IOHandler.h"
+#include "Cluster.h"
+#include "Point.h"
 
 // Reads the input file (holding all points and parameters for k-means)
 void readInputFile(const char *fileName, InputParams **inputParams, Point **points) {

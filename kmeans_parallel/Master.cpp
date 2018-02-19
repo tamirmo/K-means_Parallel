@@ -25,7 +25,6 @@ int getFirstFinishedIndex(int numOfProcesses, Output* slaveClusters) {
 }
 
 void masterPrintResults(Output *result, Cluster* clusters) {
-	// TODO: Print to file "result"
 	// Writing the result
 	writeOutputFile(result, clusters, OUTPUT_FILE_NAME);
 	print(clusters, result->K);

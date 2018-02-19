@@ -61,15 +61,38 @@ void calculateClustersCentersOmp(Point* points, int numOfPoints, Cluster* cluste
 // Assigning all points to clusters
 // Returns: TRUE if the point's cluster has changed, FALSE if not
 Boolean assignClustersToPointsOmp(Point* points, int numOfPoints, Cluster* clusters, int numOfClusters) {
-	int pointIndex;
 	// Indicating if at least one point has changed cluster
 	Boolean pointChanged = FALSE;
 
+	// A counter array for points each thread assigns
+	int* clustersPointsCounter = (int*)calloc(omp_get_max_threads() * numOfClusters, sizeof(int));
+	
+	if (clustersPointsCounter == NULL) {
+		printf("\nAllocation error assignClustersToPointsOmp\n");
+		exit(0);
+	}
+
 #pragma omp parallel for
-	for (pointIndex = 0; pointIndex < numOfPoints; pointIndex++)
+	for (int pointIndex = 0; pointIndex < numOfPoints; pointIndex++) {
 		// Assigning the curr point and checking if changed cluster
 		if (assignClusterToPoint(&(points[pointIndex]), clusters, numOfClusters))
 			pointChanged = TRUE;
+
+		int pointClusterId = points[pointIndex].cluster->id;
+		int threadId = omp_get_thread_num();
+
+		// Increasing the counter for the chosen cluster of the current thread 
+		clustersPointsCounter[threadId * numOfClusters + pointClusterId] += 1;
+	}
+
+	// Sum of point for each cluster
+#pragma omp parallel for
+	for (int clusterId = 0; clusterId < numOfClusters; clusterId++) {
+		clusters[clusterId].numOfPoints = 0;
+		for (int threadId = 0; threadId < omp_get_num_threads(); threadId++) {
+			clusters[clusterId].numOfPoints += clustersPointsCounter[threadId * numOfClusters + clusterId];
+		}
+	}
 
 	return pointChanged;
 }

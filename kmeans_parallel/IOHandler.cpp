@@ -28,7 +28,6 @@ void readInputFile(const char *fileName, InputParams **inputParams, Point **poin
 			
 			(*points) = (Point*)calloc((*inputParams)->N, sizeof(Point));
 			if ((*points) != NULL) {
-				allocSuccessful = TRUE;
 				
 				for (index = 0; index < (*inputParams)->N; index++) {
 					// Reading each point & velocity and placing it in the array:
@@ -40,26 +39,7 @@ void readInputFile(const char *fileName, InputParams **inputParams, Point **poin
 				}
 			}
 			fclose(file);
-
-			if (!allocSuccessful) {
-				// TODO: 
-				printf("\nAlloc velocities, points in readInputFile failed");
-				fflush(stdout);
-			}
 		}
-		// There is no one process per Point in file
-		else {
-			// TODO: 
-			printf("\nAlloc inputParams,points in readInputFile failed");
-			fflush(stdout);
-		}
-	}
-	// Could not read points file
-	else {
-		// TODO: 
-		// TODO: 
-		printf("\nRead file failed");
-		fflush(stdout);
 	}
 }
 
@@ -85,7 +65,9 @@ void writeOutputFile(Output *output, Cluster* clusters, const char* fileName) {
 	}
 	// Could not open file
 	else {
-		// TODO: 
+		printf("\n*****Output FILE ERROR MASTER*****\n");
+		fflush(stdout);
+		exit(1);
 	}
 }
 

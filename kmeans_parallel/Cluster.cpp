@@ -24,11 +24,11 @@ Boolean assignClusterToPoint(Point* point, Cluster* clusters, int clustersCount)
 		point->cluster->id != newCluster->id) {
 
 		// If this is not the first assignment
-		if (point->cluster != NULL)
+		//if (point->cluster != NULL)
 			// Updating the points count in the cluster
-			point->cluster->numOfPoints--;
+			//point->cluster->numOfPoints--;
 
-		newCluster->numOfPoints++;
+		//newCluster->numOfPoints++;
 		point->cluster = newCluster;
 
 		return TRUE;
@@ -57,8 +57,8 @@ void initClusters(InputParams* inputParams, Point* points, Cluster** clusters) {
 		for (i = 0; i < inputParams->N; i++)
 			points[i].cluster = NULL;
 	}
-	else
-	{
-		// TODO: Alloc failed
+	else{
+		printf("\nAllocation error initClusters\n");
+		exit(1);
 	}
 }

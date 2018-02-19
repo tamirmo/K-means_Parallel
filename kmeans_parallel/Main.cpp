@@ -4,6 +4,7 @@
 #include <omp.h>
 #include <time.h>
 #include "OmpKmeans.h"
+#include "CudaKmeans.h"
 #include "IOHandler.h"
 #include "Master.h"
 
@@ -12,20 +13,42 @@
 // Increases each point in the given collection by time with the given velocities
 // (for each point x = x + (dt * moment) * vxi ,
 // y = y + (dt * moment) * vyi)
-void increaseTime(Point* points, int numOfPoints, double dt, int moment) {
-	increaseTimeOmp(points, numOfPoints, dt, moment);
+void increaseTime(Point* points, Point** gpu_points, int numOfPoints, double dt, int moment) {
+	int cudaNumOfPoints = numOfPoints * 0.83, ompNumOfPoints = numOfPoints - cudaNumOfPoints;
+	const char* cudaErr = NULL;
+
+	// Starting cuda kernel
+	cudaErr = increaseTimeCudaStart(points, cudaNumOfPoints, dt, moment, gpu_points);
+
+	if (cudaErr != NULL){
+		printf(cudaErr);
+		exit(1);
+	}
+
+	// Increasing the left point in omp 
+	increaseTimeOmp(points + cudaNumOfPoints, ompNumOfPoints, dt, moment);
+
+	// Wating for cuda to finish the kernel
+	cudaErr = increaseTimeCudaEnd(*gpu_points, points, cudaNumOfPoints);
+
+	if (cudaErr != NULL) {
+		printf(cudaErr);
+		exit(1);
+	}
 }
 
 void freeRecourses(InputParams* inputParams, 
 					Point* points, 
 					Cluster* clusters, 
-					Output* outputs) {
+					Output* outputs, 
+					Point* pointsCuda) {
 	// TODO: Check if all alocations were freed
 
 	free(points);
 	free(inputParams);
 	free(clusters);
 	free(outputs);
+	freeCuda(pointsCuda);
 }
 
 void calculateClustersCenters(InputParams* inputParams, Point* points, Cluster* clusters) {
@@ -87,7 +110,7 @@ double kmeans(InputParams* inputParams, Point* points, Cluster** clusters) {
 }
 
 void broadcastInput(MPITypes *types, InputParams* inputParams, Point** points, int myId) {
-	// TODO: Broadcast all slaves the array
+	// Broadcast all slaves the input read
 	MPI_Bcast(inputParams, 1, types->MPI_Input_Param, MASTER_RANK, MPI_COMM_WORLD);
 	
 	// Master has the points already, slaves need to allocate memory
@@ -95,9 +118,9 @@ void broadcastInput(MPITypes *types, InputParams* inputParams, Point** points, i
 		(*points) = (Point*)calloc((inputParams)->N, sizeof(Point));
 
 		if (*points == NULL) {
-			// TODO: Alloc failed
 			printf("\nAlloc failed points inside broadcastInput");
 			fflush(stdout);
+			exit(1);
 		}
 	}
 
@@ -160,7 +183,7 @@ void handleLeftProccesses(int myId,
 	if (!isFinished && myId >= lastProcessesLeft) {
 
 		// Waiting for all others to finish:
-		printf("\nCheckpoint 8.1: id = %d", myId);
+		printf("\nCheckpoint 8.1: id = %d, isFinished = %d, lastProcessesLeft = %d ", myId, isFinished, lastProcessesLeft);
 		fflush(stdout);
 		MPI_Barrier(MPI_COMM_WORLD);
 		MPI_Gather(
@@ -201,8 +224,8 @@ int exchangeProccessesResults(Boolean *isFinished, Output *result, Cluster* clus
 								int myId, int numOfProcesses,
 								MPITypes types) {
 	int finishedProccess;
-	printf("\nCheckpoint 4: time = %lf id = %d", MPI_Wtime(), myId);
-	fflush(stdout);
+	//printf("\nCheckpoint 4: time = %lf id = %d", MPI_Wtime(), myId);
+	//fflush(stdout);
 
 	MPI_Gather(
 		result,
@@ -212,8 +235,8 @@ int exchangeProccessesResults(Boolean *isFinished, Output *result, Cluster* clus
 		MASTER_RANK,
 		MPI_COMM_WORLD);
 
-	printf("\nCheckpoint 5: id = %d", myId);
-	fflush(stdout);
+	//printf("\nCheckpoint 5: id = %d", myId);
+	//fflush(stdout);
 
 	if (isMasterRank(myId))
 		finishedProccess = masterCheckResults(inputParams,
@@ -221,8 +244,8 @@ int exchangeProccessesResults(Boolean *isFinished, Output *result, Cluster* clus
 			numOfProcesses,
 			slaveOutputs);
 
-	printf("\nCheckpoint 6: id = %d", myId);
-	fflush(stdout);
+	//printf("\nCheckpoint 6: id = %d", myId);
+	//fflush(stdout);
 
 	// Master sends all the index of the finished process
 	MPI_Bcast(&finishedProccess, 1, MPI_INT, MASTER_RANK, MPI_COMM_WORLD);
@@ -233,51 +256,59 @@ int exchangeProccessesResults(Boolean *isFinished, Output *result, Cluster* clus
 	return finishedProccess;
 }
 
+void printResultsAndFree(int myId, Output* result, Cluster* clusters, InputParams* inputParams, Point* points, Point* gpu_points, Output* slaveOutputs) {
+	if (isMasterRank(myId))
+		masterPrintResults(result, clusters);
+
+	printf("\nCheckpoint 9: id = %d", myId);
+	fflush(stdout);
+
+	freeRecourses(inputParams, points, clusters, slaveOutputs, gpu_points);
+
+	stopCuda();
+
+}
+
 // TODO: Think of a name for this function
 void parallel_kmeans(int myId, int numOfProcesses) {
 	InputParams* inputParams = (InputParams*)malloc(sizeof(InputParams));
-	Point* points = NULL;
+	Point* points = NULL, *gpu_points = NULL;;
 	Cluster* clusters = NULL;
 	Output result = {0,0,0}, *slaveOutputs = NULL;
 	int n, finishedProccess;
 	Boolean isFinished = FALSE;
 	double q, currTime = INVALID_TIME;
 	MPITypes types;
-	
-	printf("\nCheckpoint 1 : id = %d", myId);
-	fflush(stdout);
+
+	initCuda();
 
 	if (inputParams == NULL) {
-		// TODO: Alloc failed
-		printf("\nCheckpoint 1 : id = %d", myId);
-		fflush(stdout);
+		printf("\nAllocation failed parallel_kmeans - inputParams");
+		exit(1);
 	}
 
 	if (isMasterRank(myId)) {
 		slaveOutputs = (Output*)calloc(numOfProcesses, sizeof(Output));
 		if (slaveOutputs == NULL) {
-			// TODO: Alloc failed
+			printf("\nAllocation failed parallel_kmeans - slaveOutputs");
+			exit(1);
 		}
 		printf("\nCheckpoint MASTER 1: id = %d", myId);
 		fflush(stdout);
 		// Reading from file
 		readInputFile(INPUT_FILE_NAME, &inputParams, &points);
 		if (inputParams == NULL) {
-			printf("\nFILE ERROR MASTER 1: id = %d", myId);
+			printf("\n*****FILE ERROR MASTER*****\n");
 			fflush(stdout);
+			exit(1);
 		}
 	}
 
 	createMpiTypes(&types);
-	printf("\nCheckpoint 1.1 : id = %d", myId);
-	fflush(stdout);
 	broadcastInput(&types, inputParams, &points, myId);
 
-	printf("\nCheckpoint 2: id = %d", myId);
-	fflush(stdout);
-
 	// Each process starts from t = rank
-	increaseTime(points, inputParams->N, inputParams->dT, myId);
+	increaseTime(points, &gpu_points, inputParams->N, inputParams->dT, myId);
 
 	for (n = myId; n < (inputParams->T / inputParams->dT) && !isFinished; n += numOfProcesses) {
 		q = kmeans(inputParams, points, &clusters);
@@ -288,21 +319,14 @@ void parallel_kmeans(int myId, int numOfProcesses) {
 
 		// Checking if the current quality is good enough
 		isFinished = isFoundResult(q, &result, inputParams, currTime);
-
-		// Waiting till all hosts finish. No point in moving to next time, 
-		// other proc migth finished
-		MPI_Barrier(MPI_COMM_WORLD);
 		
 		finishedProccess = exchangeProccessesResults(&isFinished, &result, clusters,
 									slaveOutputs, inputParams, 
 									myId, numOfProcesses, types);
-		
-		printf("\nCheckpoint 7: id = %d isFinished = %d", myId, isFinished);
-		fflush(stdout);
 
 		if (!isFinished)
 			// Have not reached the desired quality
-			increaseTime(points, inputParams->N, inputParams->dT, numOfProcesses);
+			increaseTime(points, &gpu_points, inputParams->N, inputParams->dT, numOfProcesses);
 
 		printf("\nCheckpoint 8: id = %d", myId);
 		fflush(stdout);
@@ -317,23 +341,13 @@ void parallel_kmeans(int myId, int numOfProcesses) {
 		finishedProccess, 
 		&types);
 
-	if (isMasterRank(myId))
-		masterPrintResults(&result, clusters);
-	
-	printf("\nCheckpoint 9: id = %d", myId);
-	fflush(stdout);
-
-	// TODO: Call free
-	freeRecourses(inputParams, points, clusters, slaveOutputs);
+	printResultsAndFree(myId, &result, clusters, inputParams, points, gpu_points, slaveOutputs);
 }
 
 int main(int argc, char *argv[]) {
 	int numOfProcesses, myId;
 	clock_t start, end;
 	double cpu_time_used;
-
-	printf("\nbefore init!");
-	fflush(stdout);
 
 	MPI_Init(&argc, &argv);
 	MPI_Comm_rank(MPI_COMM_WORLD, &myId);

@@ -23,14 +23,7 @@ Boolean assignClusterToPoint(Point* point, Cluster* clusters, int clustersCount)
 		// Or the point has changed cluster
 		point->cluster->id != newCluster->id) {
 
-		// If this is not the first assignment
-		//if (point->cluster != NULL)
-			// Updating the points count in the cluster
-			//point->cluster->numOfPoints--;
-
-		//newCluster->numOfPoints++;
 		point->cluster = newCluster;
-
 		return TRUE;
 	}
 

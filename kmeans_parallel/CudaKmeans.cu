@@ -3,25 +3,29 @@
 #include "CudaKmeans.h"
 #include <time.h>
 
-void calculateClustersDiameterCuda(Point* points, int numOfPoints, Cluster* clusters, int numOfClusters) {
-#pragma omp parallel for
-	for (int clusterIndex = 0; clusterIndex < numOfClusters; clusterIndex++) {
-		double maxDistance = 0, currDistance;
+// Calling device reset
+const char* stopCuda() {
+	cudaError_t cudaStatus;
 
-		// Going over all points and calculating distance with each other point in the cluster
-		// to get the maximum distance
-		for (int i = 0; i < numOfPoints - 1; i++)
-			if (points[i].cluster->id == clusterIndex)
-				for (int j = i + 1; j < numOfPoints; j++)
-					// Calculating distance for points in the same cluster
-					if (points[j].cluster->id == clusterIndex) {
-						currDistance = getPointsDistance(&(points[i].position), &(points[j].position));
-						if (currDistance > maxDistance)
-							maxDistance = currDistance;
-					}
+	// was at main at first, need to be checked 
+	// cudaDeviceReset must be called before exiting
+	cudaStatus = cudaDeviceReset();
+	if (cudaStatus != cudaSuccess)
+		return "cudaDeviceReset failed";
 
-		clusters[clusterIndex].diameter = maxDistance;
-	}
+	return NULL;
+}
+
+// Setting the cuda device (0)
+const char* initCuda() {
+	cudaError_t cudaStatus;
+
+	// Choose which GPU to run on (our system has only one)
+	cudaStatus = cudaSetDevice(0);
+	if (cudaStatus != cudaSuccess) 
+		return "cudaSetDevice failed!  Do you have a CUDA-capable GPU installed?";
+
+	return NULL;
 }
 
 __global__ void increaseTimeKernel(Point *dev_pointArr, double timeInterval, int numOfPoints) {
@@ -87,46 +91,18 @@ const char* increaseTimeCudaEnd(Point* dev_points, Point* pointsArr, int numOfPo
 	// any errors encountered during the launch.
 	cudaStatus = cudaDeviceSynchronize();
 	if (cudaStatus != cudaSuccess) {
-		//cudaFree(&dev_data, &dev_threadsCounterArray, &dev_histogram);
+		cudaFree(dev_points);
 		return "cudaDeviceSynchronize returned error code after launching countKernel!";
 	}
 
 	// Copy histogram result vector from GPU buffer to host memory
 	cudaStatus = cudaMemcpy(pointsArr, dev_points, numOfPoints * sizeof(Point), cudaMemcpyDeviceToHost);
 	if (cudaStatus != cudaSuccess) {
-		//cudaFree(&dev_data, &dev_threadsCounterArray, &dev_histogram);
+		cudaFree(dev_points);
 		return "cudaMemcpy failed!";
 	}
 
 	// Free all GPU memory
-	//cudaFree(&dev_data, &dev_threadsCounterArray, &dev_histogram);
-	return NULL;
-}
-
-const char* stopCuda() {
-	cudaError_t cudaStatus;
-
-	// was at main at first, need to be checked 
-	// cudaDeviceReset must be called before exiting
-	cudaStatus = cudaDeviceReset();
-	if (cudaStatus != cudaSuccess) {
-		//cudaFree(&dev_data, &dev_threadsCounterArray, &dev_histogram);
-		return "cudaDeviceReset failed";
-	}
-
-	return NULL;
-}
-
-const char* initCuda() {
-	cudaError_t cudaStatus;
-
-	// Choose which GPU to run on (our system has only one)
-	cudaStatus = cudaSetDevice(0);
-	if (cudaStatus != cudaSuccess) {
-		//cudaFree(&dev_data, &dev_threadsCounterArray, &dev_histogram);
-		return "cudaSetDevice failed!  Do you have a CUDA-capable GPU installed?";
-	}
-
 	return NULL;
 }
 
@@ -134,43 +110,4 @@ const char* freeCuda(Point* gpu_points) {
 	if (cudaFree(gpu_points) != cudaSuccess)
 		return "cudaFree error";
 	return NULL;
-}
-
-void calculateClustersCentersCuda(Point* points, int numOfPoints, Cluster* clusters, int numOfClusters) {
-#pragma omp parallel for
-	for (int clusterIndex = 0; clusterIndex < numOfClusters; clusterIndex++) {
-		double sumY = 0, sumX = 0;
-
-		// When a cluster has no points, we keep it's center intact
-		if (clusters[clusterIndex].numOfPoints != 0) {
-
-			for (int pointIndex = 0; pointIndex < numOfPoints; pointIndex++) {
-				// Calculating sum of all point in the cluster
-				if (points[pointIndex].cluster->id == clusterIndex) {
-					sumX += points[pointIndex].position.x;
-					sumY += points[pointIndex].position.y;
-				}
-			}
-
-			// Each cluster's center is the average of points positions
-			clusters[clusterIndex].center.x = sumX / clusters[clusterIndex].numOfPoints;
-			clusters[clusterIndex].center.y = sumY / clusters[clusterIndex].numOfPoints;
-		}
-	}
-}
-
-// Assigning all points to clusters
-// Returns: TRUE if the point's cluster has changed, FALSE if not
-Boolean assignClustersToPointsCuda(Point* points, int numOfPoints, Cluster* clusters, int numOfClusters) {
-	int pointIndex;
-	// Indicating if at least one point has changed cluster
-	Boolean pointChanged = FALSE;
-
-#pragma omp parallel for
-	for (pointIndex = 0; pointIndex < numOfPoints; pointIndex++)
-		// Assigning the curr point and checking if changed cluster
-		if (assignClusterToPoint(&(points[pointIndex]), clusters, numOfClusters))
-			pointChanged = TRUE;
-
-	return pointChanged;
 }

@@ -14,7 +14,7 @@
 // (for each point x = x + (dt * moment) * vxi ,
 // y = y + (dt * moment) * vyi)
 void increaseTime(Point* points, Point** gpu_points, int numOfPoints, double dt, int moment) {
-	int cudaNumOfPoints = numOfPoints * 0.83, ompNumOfPoints = numOfPoints - cudaNumOfPoints;
+	int cudaNumOfPoints = numOfPoints * CUDA_INC_TIME_PORTION, ompNumOfPoints = numOfPoints - cudaNumOfPoints;
 	const char* cudaErr = NULL;
 
 	// Starting cuda kernel

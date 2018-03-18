@@ -9,7 +9,6 @@ struct Cluster;
 #define OUTPUT_FILE_NAME "output.txt"
 #define INVALID_OUTPUT_K 0
 
-// TODO: Think of a better place for boolean
 typedef enum Boolean { FALSE, TRUE } Boolean;
 
 struct InputParams {
@@ -22,7 +21,7 @@ struct InputParams {
 	// Quality measure to stop
 	double QM;
 	//  Defines the end of time interval[0, T]
-	int T;
+	double T;
 	// Defines moments t = n*dT, n = { 0, 1, 2, … , T / dT } 
 	// for which calculate the clusters and the quality
 	double dT;

@@ -18,7 +18,7 @@ void readInputFile(const char *fileName, InputParams **inputParams, Point **poin
 		*inputParams = (InputParams*)malloc(sizeof(InputParams));
 		if (inputParams != NULL) {
 			// First line in the file has many input parameters
-			fscanf_s(file, "%d %d %d %lf %d %lf",
+			fscanf_s(file, "%d %d %lf %lf %d %lf",
 				&((*inputParams)->N),
 				&((*inputParams)->K),
 				&((*inputParams)->T),
@@ -113,7 +113,7 @@ void createClusterType(MPI_Datatype *MPI_Cluster, MPI_Datatype *MPI_Position) {
 // Creates a MPI_Type for InputParams 
 void createInputParamsType(MPI_Datatype *MPI_Input_Param) {
 	InputParams inputParam;
-	MPI_Datatype type[6] = { MPI_INT, MPI_INT, MPI_INT, MPI_DOUBLE, MPI_INT, MPI_DOUBLE };
+	MPI_Datatype type[6] = { MPI_INT, MPI_INT, MPI_INT, MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE };
 	int blocklen[6] = { 1, 1, 1, 1, 1, 1 };
 	MPI_Aint disp[6];
 
@@ -176,7 +176,7 @@ void createMpiTypes(MPITypes *MPITypes) {
 }
 
 void print(InputParams* inputParams, Point* points) {
-	printf("N = %d K = %d T =  %d \ndT = %lf LIMIT = %d QM = %lf\n",
+	printf("N = %d K = %d T =  %lf \ndT = %lf LIMIT = %d QM = %lf\n",
 		(inputParams->N),
 		(inputParams->K),
 		(inputParams->T),

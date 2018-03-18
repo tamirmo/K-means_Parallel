@@ -42,7 +42,6 @@ void freeRecourses(InputParams* inputParams,
 					Cluster* clusters, 
 					Output* outputs, 
 					Point* pointsCuda) {
-	// TODO: Check if all alocations were freed
 
 	free(points);
 	free(inputParams);
@@ -131,34 +130,19 @@ void broadcastInput(MPITypes *types, InputParams* inputParams, Point** points, i
 void handleFinishedProcessIndex(int myId, int finishedProccess, Boolean *isFinished, Cluster** clusters, int clustersCount, MPITypes *types) {
 	MPI_Status status;
 
-	// If the result comes from one of slaves,
-	// master needs to receive it
-	if (!isMasterRank(myId)) {
-		printf("\nSlave got id %d", finishedProccess);
-		fflush(stdout);
-	}
-
 	// If we have the required result
 	if (finishedProccess != NO_SLAVE_FINISHED) {
 		// If the result comes from one of slaves,
 		// master needs to receive it
 		if (isMasterRank(myId)) {
 			if (!isMasterRank(finishedProccess)) {
-				printf("\nMaster receiving from %d", finishedProccess);
-				fflush(stdout);
 				MPI_Recv(*clusters, clustersCount, types->MPI_Cluster, finishedProccess, 0, MPI_COMM_WORLD, &status);
-			}
-			else {
-				printf("\nMaster result taken from %d", finishedProccess);
-				fflush(stdout);
 			}
 		}
 		// Slaves code:
 		else {
 			// If master wants our result
 			if (finishedProccess == myId) {
-				printf("\nSlave sending result %d", finishedProccess);
-				fflush(stdout);
 				MPI_Send(*clusters, clustersCount, types->MPI_Cluster, MASTER_RANK, 0, MPI_COMM_WORLD);
 			}
 		}
@@ -183,7 +167,6 @@ void handleLeftProccesses(int myId,
 	if (!isFinished && myId >= lastProcessesLeft) {
 
 		// Waiting for all others to finish:
-		printf("\nCheckpoint 8.1: id = %d, isFinished = %d, lastProcessesLeft = %d ", myId, isFinished, lastProcessesLeft);
 		fflush(stdout);
 		MPI_Barrier(MPI_COMM_WORLD);
 		MPI_Gather(
@@ -224,8 +207,6 @@ int exchangeProccessesResults(Boolean *isFinished, Output *result, Cluster* clus
 								int myId, int numOfProcesses,
 								MPITypes types) {
 	int finishedProccess;
-	//printf("\nCheckpoint 4: time = %lf id = %d", MPI_Wtime(), myId);
-	//fflush(stdout);
 
 	MPI_Gather(
 		result,
@@ -235,17 +216,11 @@ int exchangeProccessesResults(Boolean *isFinished, Output *result, Cluster* clus
 		MASTER_RANK,
 		MPI_COMM_WORLD);
 
-	//printf("\nCheckpoint 5: id = %d", myId);
-	//fflush(stdout);
-
 	if (isMasterRank(myId))
 		finishedProccess = masterCheckResults(inputParams,
 			result, isFinished,
 			numOfProcesses,
 			slaveOutputs);
-
-	//printf("\nCheckpoint 6: id = %d", myId);
-	//fflush(stdout);
 
 	// Master sends all the index of the finished process
 	MPI_Bcast(&finishedProccess, 1, MPI_INT, MASTER_RANK, MPI_COMM_WORLD);
@@ -260,16 +235,11 @@ void printResultsAndFree(int myId, Output* result, Cluster* clusters, InputParam
 	if (isMasterRank(myId))
 		masterPrintResults(result, clusters);
 
-	printf("\nCheckpoint 9: id = %d", myId);
-	fflush(stdout);
-
 	freeRecourses(inputParams, points, clusters, slaveOutputs, gpu_points);
 
 	stopCuda();
-
 }
 
-// TODO: Think of a name for this function
 void parallel_kmeans(int myId, int numOfProcesses) {
 	InputParams* inputParams = (InputParams*)malloc(sizeof(InputParams));
 	Point* points = NULL, *gpu_points = NULL;;
@@ -293,11 +263,9 @@ void parallel_kmeans(int myId, int numOfProcesses) {
 			printf("\nAllocation failed parallel_kmeans - slaveOutputs");
 			exit(1);
 		}
-		printf("\nCheckpoint MASTER 1: id = %d", myId);
-		fflush(stdout);
 		// Reading from file
 		readInputFile(INPUT_FILE_NAME, &inputParams, &points);
-		if (inputParams == NULL) {
+		if (points == NULL) {
 			printf("\n*****FILE ERROR MASTER*****\n");
 			fflush(stdout);
 			exit(1);
@@ -314,7 +282,7 @@ void parallel_kmeans(int myId, int numOfProcesses) {
 		q = kmeans(inputParams, points, &clusters);
 		currTime = n * inputParams->dT;
 
-		printf("\nCheckpoint 3: id = %d n = %d", myId, n);
+		printf("\nid = %d n = %d", myId, n);
 		fflush(stdout);
 
 		// Checking if the current quality is good enough
@@ -327,9 +295,6 @@ void parallel_kmeans(int myId, int numOfProcesses) {
 		if (!isFinished)
 			// Have not reached the desired quality
 			increaseTime(points, &gpu_points, inputParams->N, inputParams->dT, numOfProcesses);
-
-		printf("\nCheckpoint 8: id = %d", myId);
-		fflush(stdout);
 	}
 
 	// There migth be some proccesses left wihtout a time to check at the end,
@@ -367,6 +332,6 @@ int main(int argc, char *argv[]) {
 	fflush(stdout);
 
 	MPI_Finalize();
-
+	
 	return 0;
 }

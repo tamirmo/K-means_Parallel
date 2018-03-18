@@ -40,10 +40,9 @@ int masterCheckResults(InputParams* inputParams,
 	// Assuming the master is finished
 	int finishedProcessIndex = MASTER_RANK;
 	
-	// TODO: Return this from comment
 	// If master has finished, no need to process more,
 	// his result will be taken
-	/*if (!isFinished)*/ {
+	if (!isFinished){
 		// Checking if there is a process with result
 		finishedProcessIndex = getFirstFinishedIndex(numOfProcesses, slaveOutputs);
 		if (finishedProcessIndex != NO_SLAVE_FINISHED) {

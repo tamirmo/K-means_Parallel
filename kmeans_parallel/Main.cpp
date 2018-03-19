@@ -168,7 +168,6 @@ void handleLeftProccesses(int myId,
 
 		// Waiting for all others to finish:
 		fflush(stdout);
-		MPI_Barrier(MPI_COMM_WORLD);
 		MPI_Gather(
 			result,
 			1, types->MPI_Output,
@@ -202,7 +201,7 @@ Boolean isFoundResult(double q, Output *result, InputParams* inputParams, double
 // Communicating with master and checking if someone has finished
 // (also sending the result if this proccess has finished)
 // Returning the id of the finished proccess
-int exchangeProccessesResults(Boolean *isFinished, Output *result, Cluster* clusters,
+int exchangeProccessesResults(Boolean *isFinished, Output *result, Cluster** clusters,
 								Output *slaveOutputs, InputParams* inputParams, 
 								int myId, int numOfProcesses,
 								MPITypes types) {
@@ -226,14 +225,23 @@ int exchangeProccessesResults(Boolean *isFinished, Output *result, Cluster* clus
 	MPI_Bcast(&finishedProccess, 1, MPI_INT, MASTER_RANK, MPI_COMM_WORLD);
 
 	// Checking if we are finished and if we need to send the clusters
-	handleFinishedProcessIndex(myId, finishedProccess, isFinished, &clusters, inputParams->K, &types);
+	handleFinishedProcessIndex(myId, finishedProccess, isFinished, clusters, inputParams->K, &types);
 
 	return finishedProccess;
 }
 
-void printResultsAndFree(int myId, Output* result, Cluster* clusters, InputParams* inputParams, Point* points, Point* gpu_points, Output* slaveOutputs) {
-	if (isMasterRank(myId))
+void printResultsAndFree(int myId, Output* result, Cluster* clusters, InputParams* inputParams, Point* points, Point* gpu_points, Output* slaveOutputs, double q, double currTime) {
+	if (isMasterRank(myId)){
+		// If no one reached the q
+		if (!(isOutputValid(result))) {
+			// Taking the last result
+			(*result).t = currTime;
+			(*result).K = inputParams->K;
+			(*result).q = q;
+		}
+
 		masterPrintResults(result, clusters);
+	}
 
 	freeRecourses(inputParams, points, clusters, slaveOutputs, gpu_points);
 
@@ -282,16 +290,13 @@ void parallel_kmeans(int myId, int numOfProcesses) {
 		q = kmeans(inputParams, points, &clusters);
 		currTime = n * inputParams->dT;
 
-		printf("\nid = %d n = %d", myId, n);
-		fflush(stdout);
-
 		// Checking if the current quality is good enough
 		isFinished = isFoundResult(q, &result, inputParams, currTime);
 		
-		finishedProccess = exchangeProccessesResults(&isFinished, &result, clusters,
+		finishedProccess = exchangeProccessesResults(&isFinished, &result, &clusters,
 									slaveOutputs, inputParams, 
 									myId, numOfProcesses, types);
-
+		
 		if (!isFinished)
 			// Have not reached the desired quality
 			increaseTime(points, &gpu_points, inputParams->N, inputParams->dT, numOfProcesses);
@@ -306,7 +311,7 @@ void parallel_kmeans(int myId, int numOfProcesses) {
 		finishedProccess, 
 		&types);
 
-	printResultsAndFree(myId, &result, clusters, inputParams, points, gpu_points, slaveOutputs);
+	printResultsAndFree(myId, &result, clusters, inputParams, points, gpu_points, slaveOutputs, q, currTime);
 }
 
 int main(int argc, char *argv[]) {

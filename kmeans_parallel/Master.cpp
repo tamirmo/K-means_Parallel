@@ -37,12 +37,12 @@ int masterCheckResults(InputParams* inputParams,
 	Boolean *isFinished,
 	int numOfProcesses,
 	Output *slaveOutputs) {
-	// Assuming the master is finished
+	// Assuming no one finished
 	int finishedProcessIndex = NO_SLAVE_FINISHED;
-	
+
 	// If master has finished, no need to process more,
 	// his result will be taken
-	if (!isFinished){
+	if (!(*isFinished)) {
 		// Checking if there is a process with result
 		finishedProcessIndex = getFirstFinishedIndex(numOfProcesses, slaveOutputs);
 		if (finishedProcessIndex != NO_SLAVE_FINISHED) {
@@ -50,9 +50,8 @@ int masterCheckResults(InputParams* inputParams,
 			*result = slaveOutputs[finishedProcessIndex];
 		}
 	}
-	else {
+	else
 		finishedProcessIndex = MASTER_RANK;
-	}
 
 	return finishedProcessIndex;
 }
